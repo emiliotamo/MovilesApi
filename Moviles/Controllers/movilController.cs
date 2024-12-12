@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Moviles;
-using System;
-using System.Reflection;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace movil.Controllers
 {
@@ -9,31 +10,25 @@ namespace movil.Controllers
     [Route("[controller]")]
     public class miapiController : ControllerBase
     {
-        private static readonly List<Movil> Lista = new List<Movil>
-        {
-            new Movil("Samsung", 799.99m, 128),
-            new Movil("Apple", 999.99m, 256),
-            new Movil("Xiaomi", 299.99m, 128),
-            new Movil("OnePlus", 499.99m, 128),
-            new Movil("Google", 899.99m, 256)
-        };
-
+        private readonly MovilDbContext _context;
         private readonly ILogger<miapiController> _logger;
 
-        public miapiController(ILogger<miapiController> logger)
+        public miapiController(MovilDbContext context, ILogger<miapiController> logger)
         {
+            _context = context;
             _logger = logger;
         }
 
         [HttpGet("moviles")]
-        public IActionResult GetMoviles()
+        public async Task<IActionResult> GetMoviles()
         {
             _logger.LogInformation("Obteniendo la lista de móviles.");
-            return Ok(Lista);
+            var moviles = await _context.Moviles.ToListAsync();
+            return Ok(moviles);
         }
 
         [HttpPost]
-        public ActionResult<Movil> Post([FromBody] Movil nuevoMovil)
+        public async Task<ActionResult<Movil>> Post([FromBody] Movil nuevoMovil)
         {
             if (nuevoMovil == null || string.IsNullOrWhiteSpace(nuevoMovil.Marca))
             {
@@ -50,40 +45,47 @@ namespace movil.Controllers
                 nuevoMovil.Precio = 499.99m; // Valor predeterminado
             }
 
-            Lista.Add(nuevoMovil);
+            _context.Moviles.Add(nuevoMovil);
+            await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetMoviles), new { marca = nuevoMovil.Marca }, nuevoMovil);
         }
 
         [HttpPut("moviles/{marcaActual}")]
-        public IActionResult ActualizarMarca(string marcaActual, [FromBody] string nuevaMarca)
+        public async Task<IActionResult> ActualizarMarca(string marcaActual, [FromBody] string nuevaMarca)
         {
             if (string.IsNullOrWhiteSpace(nuevaMarca))
             {
                 return BadRequest(new { mensaje = "La nueva marca no puede estar vacía." });
             }
 
-            var movil = Lista.Find(m => m.Marca.Equals(marcaActual, StringComparison.OrdinalIgnoreCase));
+            var movil = await _context.Moviles
+                .FirstOrDefaultAsync(m => m.Marca.Equals(marcaActual, StringComparison.OrdinalIgnoreCase));
+
             if (movil == null)
             {
                 return NotFound(new { mensaje = $"Móvil con marca '{marcaActual}' no encontrado." });
             }
 
             movil.Marca = nuevaMarca;
+            await _context.SaveChangesAsync();
 
             return Ok(new { mensaje = "Marca actualizada exitosamente.", movil });
         }
 
         [HttpDelete("moviles/{marca}")]
-        public IActionResult EliminarMovil(string marca)
+        public async Task<IActionResult> EliminarMovil(string marca)
         {
-            var movil = Lista.Find(m => m.Marca.Equals(marca, StringComparison.OrdinalIgnoreCase));
+            var movil = await _context.Moviles
+                .FirstOrDefaultAsync(m => m.Marca.Equals(marca, StringComparison.OrdinalIgnoreCase));
+
             if (movil == null)
             {
                 return NotFound(new { mensaje = $"Móvil con marca '{marca}' no encontrado." });
             }
 
-            Lista.Remove(movil);
+            _context.Moviles.Remove(movil);
+            await _context.SaveChangesAsync();
 
             return Ok(new { mensaje = "Móvil eliminado exitosamente.", movil });
         }
